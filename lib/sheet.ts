@@ -24,9 +24,25 @@ function colorCelda(c: ExcelJS.Cell): Color {
   return { red: parseInt(h.slice(0, 2), 16) / 255, green: parseInt(h.slice(2, 4), 16) / 255, blue: parseInt(h.slice(4, 6), 16) / 255 };
 }
 
+// Roberto sube un archivo nuevo de vez en cuando: toma el .xlsx "usuarios*" más reciente de la carpeta.
+// Si no se puede listar la carpeta, usa el archivo configurado.
+async function archivoVigente(drive: ReturnType<typeof google.drive>): Promise<string> {
+  try {
+    const l = await drive.files.list({
+      q: `'${process.env.SOURCE_FOLDER_ID || '1RvggaG0-yDP0yB7wGQFa3kTA8JPi40l9'}' in parents and trashed = false and name contains 'usuarios' and mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'`,
+      orderBy: 'createdTime desc', pageSize: 1, fields: 'files(id,name)',
+      supportsAllDrives: true, includeItemsFromAllDrives: true,
+    });
+    return l.data.files?.[0]?.id || CONFIG.archivoId;
+  } catch {
+    return CONFIG.archivoId;
+  }
+}
+
 async function descargarLibro(ctx: Ctx): Promise<ExcelJS.Workbook> {
   const drive = google.drive({ version: 'v3', auth: ctx.auth });
-  const r = await drive.files.get({ fileId: CONFIG.archivoId, alt: 'media' }, { responseType: 'arraybuffer' });
+  const fileId = await archivoVigente(drive);
+  const r = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(Buffer.from(r.data as ArrayBuffer) as any);
   return wb;
